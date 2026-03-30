@@ -182,7 +182,7 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 | Chunk-based computation | ✅ Production | Real partial sums per chunk, adaptive sizing |
 | MPI merge (GMP) | ✅ Production | serialize_mpf → MPI_Gather → deserialize → accumulate |
 | Guardrails in run path | ✅ Production | Feasibility check, --dry-run, --confirm, disk abort |
-| CUDA hybrid | ⚠️ Experimental | ≤700 digits, double precision limit |
+| CUDA hybrid | ✅ Production | Tier 1: GPU double (≤700 digits), Tier 2: binary splitting + GPU NTT hooks (unlimited) |
 | MPI init + rank partition | ✅ Production | Real MPI_Init, rank-based chunk assignment |
 | GPU benchmarks | ✅ Implemented | H2D bandwidth + FMA kernel (requires BUILD_CUDA=ON) |
 | MPI benchmarks | ✅ Implemented | Ping-pong latency + Allreduce bandwidth (requires BUILD_MPI=ON) |
