@@ -192,12 +192,11 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 
 ## PHYSnet Notes
 
-- **Login:** `ssh login1.physnet.uni-hamburg.de`
 - **Scheduler:** Slurm
 - **Modules:** Use `module avail` to find available compilers/libraries
 - **Scratch:** Use `$SLURM_TMPDIR` for node-local temporary storage
 - **GPU:** 42 GPGPUs available; request via `--gres=gpu:N`
-- **Support:** support@physnet.uni-hamburg.de
+
 
 See [docs/physnet.md](docs/physnet.md) for detailed PHYSnet integration guide.
 
