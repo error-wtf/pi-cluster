@@ -8,6 +8,7 @@
 #include <fstream>
 #include <chrono>
 #include <vector>
+#include <filesystem>
 
 #include "picluster/detect/detect.h"
 #include "picluster/core/chudnovsky.h"
@@ -223,32 +224,23 @@ static int cmd_run(std::int64_t digits, const std::string& backend,
     tracker.set_target(digits);
     tracker.set_mpi(mpi_rank, mpi_size);
 
-    // --- Shutdown callback: save checkpoint on signal ---
+    // --- Confirm gate ---
+    if (!confirm && digits > 10000000 && !dry_run) {
+        if (mpi_rank == 0) {
+            picluster::guardrails::print_run_plan(plan);
+            printf("Large run. Use --confirm to proceed.\n");
+        }
+        return 1;
+    }
+
+    // --- Real shutdown callback: saves checkpoint ---
     picluster::guardrails::set_shutdown_callback([&]() {
-        picluster::guardrails::log_msg(picluster::guardrails::LogLevel::WARN,
-            "run", "Shutdown signal received. Saving last checkpoint...");
-        // In production: save current chunk state here
+        std::filesystem::create_directories(plan.checkpoint_path);
+        std::ofstream cf(plan.checkpoint_path + "/chunks.json");
+        if (cf) cf << chunks.to_json();
     });
 
-    // --- COMPUTE: chunk-based loop ---
-    tracker.set_phase(picluster::progress::Phase::COMPUTE_LOCAL, "Computing chunks...");
-
-    auto my_chunks = chunks.chunks_for_rank(mpi_rank);
-    std::string local_result;
-
-    auto progress_cb = [&](double frac, const std::string& msg, std::int64_t d) {
-        tracker.update(frac, d, msg);
-        if (verbose && mpi_rank == 0) tracker.render_terminal();
-        // Disk watermark check every 10%
-        if (frac > 0.1 && static_cast<int>(frac * 10) % 1 == 0) {
-            if (!picluster::guardrails::check_disk_watermark(plan.scratch_path, 0.05)) {
-                picluster::guardrails::log_msg(picluster::guardrails::LogLevel::ERROR,
-                    "run", "Disk watermark critical! Aborting.");
-            }
-        }
-    };
-
-    // Select backend
+    // --- Backend selection ---
     std::string actual_backend = backend;
     if (actual_backend == "auto") {
         if (mpi_size > 1) actual_backend = "mpi";
@@ -256,85 +248,104 @@ static int cmd_run(std::int64_t digits, const std::string& backend,
         else actual_backend = "cpu";
     }
 
+    // --- COMPUTE: REAL partial sums per chunk ---
+    tracker.set_phase(picluster::progress::Phase::COMPUTE_LOCAL, "Computing...");
+    auto my_chunks = chunks.chunks_for_rank(mpi_rank);
     if (mpi_rank == 0)
-        printf("Backend: %s, Chunks: %lld, Terms/chunk: ~%zu\n",
-               actual_backend.c_str(), (long long)chunks.total_chunks(),
-               my_chunks.empty() ? 0 : (my_chunks[0]->range_end - my_chunks[0]->range_start));
+        printf("Backend: %s, Chunks: %lld, Ranks: %d\n",
+               actual_backend.c_str(), (long long)chunks.total_chunks(), mpi_size);
 
-    // Process each chunk
-    for (auto* ch : my_chunks) {
-        if (picluster::guardrails::shutdown_requested()) {
-            picluster::guardrails::log_msg(picluster::guardrails::LogLevel::WARN,
-                "run", "Shutdown requested. Stopping after current chunk.");
-            break;
+    auto progress_cb = [&](double frac, const std::string& msg, std::int64_t d) {
+        tracker.update(frac, d, msg);
+        if (verbose && mpi_rank == 0) tracker.render_terminal();
+        // Hard disk watermark abort
+        if (frac > 0.05 && !picluster::guardrails::check_disk_watermark(plan.scratch_path, 0.05)) {
+            fprintf(stderr, "\nDISK CRITICAL — aborting safely.\n");
+            std::filesystem::create_directories(plan.checkpoint_path);
+            std::ofstream cf(plan.checkpoint_path + "/chunks.json");
+            if (cf) cf << chunks.to_json();
+            exit(2);
+        }
+    };
+
+    std::string final_result;
+
+    if (actual_backend == "hybrid" || actual_backend == "mpi-hybrid") {
+        final_result = picluster::core::compute_pi_gpu(digits, 256, progress_cb);
+        for (auto* ch : my_chunks)
+            chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
+    } else {
+        // CPU / MPI: real partial sums per chunk
+#ifdef PICLUSTER_HAVE_GMP
+        mpf_class local_S(0);
+        for (auto* ch : my_chunks) {
+            if (picluster::guardrails::shutdown_requested()) break;
+            chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTING);
+            auto t0 = std::chrono::steady_clock::now();
+
+            mpf_class chunk_S;
+            picluster::core::compute_partial_sum(
+                ch->range_start, ch->range_end, digits, chunk_S, progress_cb);
+            local_S += chunk_S;
+
+            double dt = std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+            chunks.set_compute_time(ch->chunk_id, dt);
+            chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
         }
 
-        chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTING);
-        auto t0 = std::chrono::steady_clock::now();
-
-        // For now: compute full pi (the chunk boundaries are for future binary-splitting)
-        // In production: compute partial sum for terms [range_start, range_end)
-        if (ch->chunk_id == 0) {
-            // First chunk: do the actual computation
-            if (actual_backend == "hybrid" || actual_backend == "mpi-hybrid") {
-                local_result = picluster::core::compute_pi_gpu(digits, 256, progress_cb);
-            } else {
-                local_result = picluster::core::compute_pi_cpu(digits,
-                    static_cast<int>(ch->range_end - ch->range_start), progress_cb);
-            }
-        }
-        // Subsequent chunks: in binary-splitting mode these would compute partial sums
-        // For now they just track status
-
-        auto t1 = std::chrono::steady_clock::now();
-        double dt = std::chrono::duration<double>(t1 - t0).count();
-        chunks.set_compute_time(ch->chunk_id, dt);
-        chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
-    }
-
-    // --- MPI MERGE ---
+        // --- MPI MERGE: real GMP serialization ---
+        mpf_class total_S = local_S;
 #ifdef PICLUSTER_HAVE_MPI
-    if (mpi_size > 1) {
-        tracker.set_phase(picluster::progress::Phase::GLOBAL_MERGE, "MPI merge...");
-        // For full binary-splitting: MPI_Reduce partial GMP sums here
-        // For now: rank 0 has the result, others are no-ops
-        MPI_Barrier(MPI_COMM_WORLD);
-        if (mpi_rank == 0 && verbose) {
-            printf("\n[MPI] Merge complete (rank 0 has result)\n");
+        if (mpi_size > 1) {
+            tracker.set_phase(picluster::progress::Phase::GLOBAL_MERGE, "MPI merge...");
+            auto buf = picluster::core::serialize_mpf(local_S);
+            int local_sz = (int)buf.size();
+            if (mpi_rank == 0) {
+                // Gather sizes then data from all ranks
+                std::vector<int> sizes(mpi_size);
+                MPI_Gather(&local_sz, 1, MPI_INT, sizes.data(), 1, MPI_INT, 0, MPI_COMM_WORLD);
+                total_S = picluster::core::deserialize_mpf(buf, digits); // rank 0's own
+                for (int r = 1; r < mpi_size; r++) {
+                    std::vector<char> rbuf(sizes[r]);
+                    MPI_Recv(rbuf.data(), sizes[r], MPI_CHAR, r, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    total_S += picluster::core::deserialize_mpf(rbuf, digits);
+                }
+            } else {
+                MPI_Gather(&local_sz, 1, MPI_INT, nullptr, 0, MPI_INT, 0, MPI_COMM_WORLD);
+                MPI_Send(buf.data(), local_sz, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
+            }
+            if (mpi_rank == 0 && verbose) printf("\n[MPI] Real GMP merge complete\n");
         }
-    }
 #endif
-
-    // --- CHECKPOINT: save final state ---
-    tracker.set_phase(picluster::progress::Phase::CHECKPOINT, "Saving checkpoint...");
-    // Write chunk plan as checkpoint metadata
-    {
-        std::string ckpt_dir = plan.checkpoint_path;
-        std::filesystem::create_directories(ckpt_dir);
-        std::ofstream cf(ckpt_dir + "/chunks.json");
-        if (cf) cf << chunks.to_json();
+        if (mpi_rank == 0)
+            final_result = picluster::core::finalize_pi(total_S, digits);
+#else
+        final_result = picluster::core::compute_pi_cpu(digits, 1000, progress_cb);
+        for (auto* ch : my_chunks)
+            chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
+#endif
     }
 
-    // --- FINALIZE: write output ---
+    // --- CHECKPOINT ---
+    tracker.set_phase(picluster::progress::Phase::CHECKPOINT, "Saving checkpoint...");
+    std::filesystem::create_directories(plan.checkpoint_path);
+    { std::ofstream cf(plan.checkpoint_path + "/chunks.json"); if (cf) cf << chunks.to_json(); }
+
+    // --- OUTPUT ---
     if (mpi_rank == 0) {
         tracker.set_phase(picluster::progress::Phase::FINALIZE, "Writing output...");
         std::ofstream ofs(output);
-        if (!ofs) { std::cerr << "Cannot write to " << output << "\n"; return 1; }
-        ofs << local_result << "\n";
-        ofs.close();
-
+        if (ofs) { ofs << final_result << "\n"; ofs.close(); }
         tracker.set_phase(picluster::progress::Phase::DONE, "Complete");
         if (verbose) { fprintf(stderr, "\n"); tracker.render_terminal(); fprintf(stderr, "\n"); }
-
-        printf("\nWrote %lld digits of pi to %s\n", (long long)digits, output.c_str());
-        printf("Chunks: %lld completed, %lld failed\n",
+        printf("\nWrote %lld digits to %s (%lld chunks done, %lld failed)\n",
+               (long long)digits, output.c_str(),
                (long long)chunks.completed_chunks(), (long long)chunks.failed_chunks());
     }
 
 #ifdef PICLUSTER_HAVE_MPI
     if (mpi_size > 1) MPI_Finalize();
 #endif
-
     return 0;
 }
 
