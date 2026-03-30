@@ -286,8 +286,28 @@ static int cmd_run(std::int64_t digits, const std::string& backend,
         // CPU / MPI: real partial sums per chunk
 #ifdef PICLUSTER_HAVE_GMP
         mpf_class local_S(0);
+        std::string chunk_data_dir = plan.checkpoint_path + "/chunk_sums";
+        std::filesystem::create_directories(chunk_data_dir);
+
         for (auto* ch : my_chunks) {
             if (picluster::guardrails::shutdown_requested()) break;
+
+            // Check if this chunk's partial sum was already persisted (resume skip)
+            std::string sum_file = chunk_data_dir + "/chunk_" + std::to_string(ch->chunk_id) + ".sum";
+            if (std::filesystem::exists(sum_file)) {
+                std::ifstream sf(sum_file);
+                std::string saved_sum;
+                std::getline(sf, saved_sum);
+                if (!saved_sum.empty()) {
+                    mpf_class restored(saved_sum);
+                    local_S += restored;
+                    chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
+                    if (verbose && mpi_rank == 0)
+                        printf("  Chunk %lld: restored from %s\n", (long long)ch->chunk_id, sum_file.c_str());
+                    continue;
+                }
+            }
+
             chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTING);
             auto t0 = std::chrono::steady_clock::now();
 
@@ -295,6 +315,15 @@ static int cmd_run(std::int64_t digits, const std::string& backend,
             picluster::core::compute_partial_sum(
                 ch->range_start, ch->range_end, digits, chunk_S, progress_cb);
             local_S += chunk_S;
+
+            // Persist partial sum to scratch for resume
+            {
+                std::size_t bufsize = static_cast<std::size_t>(digits) + 50;
+                std::vector<char> buf(bufsize);
+                gmp_snprintf(buf.data(), bufsize, "%.*Fe", (int)(digits/3 + 20), chunk_S.get_mpf_t());
+                std::ofstream sf(sum_file);
+                sf << buf.data();
+            }
 
             double dt = std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
             chunks.set_compute_time(ch->chunk_id, dt);

@@ -179,7 +179,7 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 | MPI merge | ✅ Production | Hierarchical tree-reduce: O(log N) pairwise steps with GMP serialize/deserialize | — |
 | Guardrails | ✅ Production | Feasibility check, `--dry-run`, `--confirm` gate, disk watermark → `exit(2)` with checkpoint | — |
 | Signal handling | ✅ Production | SIGINT/SIGTERM → real `chunks.json` checkpoint save | — |
-| Checkpoint/Resume | ✅ Production | Chunk plan saved as JSON; `resume` parses status, auto-recomputes only incomplete chunks | Partial sum storage for skip-recompute of completed chunks not yet persisted |
+| Checkpoint/Resume | ✅ Production | Chunk plan saved as JSON; `resume` parses status, auto-recomputes only incomplete chunks | — |
 | CLI | ✅ Production | detect, bench, doctor, estimate, run, resume | — |
 | Progress tracker | ✅ Production | Phase-based, ETA, throughput, JSON export | Chunk-level and merge-level detail still basic |
 | Benchmarks (CPU/Mem/IO) | ✅ Production | CPU throughput, memory bandwidth, sequential disk I/O | Random I/O still TODO |
