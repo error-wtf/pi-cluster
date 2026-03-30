@@ -89,6 +89,8 @@ add_library(picluster_core STATIC
     src/core/binary_splitting.cpp
     src/bench/mpi_bench.cpp
     src/util/format.cpp
+    src/storage/chunk_persist.cpp
+    src/bench/calibration.cpp
     src/util/guardrails.cpp
 )
 target_link_libraries(picluster_core PUBLIC Threads::Threads)
@@ -148,6 +150,14 @@ if(BUILD_TESTS)
     add_executable(smoke_run tests/smoke/smoke_run.cpp)
     target_link_libraries(smoke_run PRIVATE picluster_core)
     add_test(NAME smoke_run COMMAND smoke_run)
+
+    add_executable(test_serialize tests/unit/test_serialize.cpp)
+    target_link_libraries(test_serialize PRIVATE picluster_core)
+    add_test(NAME test_serialize COMMAND test_serialize)
+
+    add_executable(test_chunk_persist tests/unit/test_chunk_persist.cpp)
+    target_link_libraries(test_chunk_persist PRIVATE picluster_core)
+    add_test(NAME test_chunk_persist COMMAND test_chunk_persist)
 endif()
 
 # ==== Install ====
