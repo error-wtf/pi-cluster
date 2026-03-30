@@ -86,6 +86,8 @@ add_library(picluster_core STATIC
     src/storage/scratch.cpp
     src/storage/checkpoint.cpp
     src/storage/chunk.cpp
+    src/core/binary_splitting.cpp
+    src/bench/mpi_bench.cpp
     src/util/format.cpp
     src/util/guardrails.cpp
 )

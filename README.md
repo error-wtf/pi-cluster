@@ -184,9 +184,9 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 | Guardrails in run path | ✅ Production | Feasibility check, --dry-run, --confirm, disk abort |
 | CUDA hybrid | ⚠️ Experimental | ≤700 digits, double precision limit |
 | MPI init + rank partition | ✅ Production | Real MPI_Init, rank-based chunk assignment |
-| GPU benchmarks | 🔲 Stub | Needs CUDA compilation |
-| MPI benchmarks | 🔲 Stub | Needs MPI compilation |
-| Binary splitting | 🔲 Planned | For billion+ digit efficiency |
+| GPU benchmarks | ✅ Implemented | H2D bandwidth + FMA kernel (requires BUILD_CUDA=ON) |
+| MPI benchmarks | ✅ Implemented | Ping-pong latency + Allreduce bandwidth (requires BUILD_MPI=ON) |
+| Binary splitting | ⚠️ Skeleton | Architectural hooks ready, GMP product tree planned |
 
 ---
 

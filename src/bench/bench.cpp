@@ -104,11 +104,13 @@ BenchResult bench_gpu_transfer() {
     r.name = "gpu_h2d_transfer";
     r.unit = "GB/s";
 #ifdef PICLUSTER_HAVE_CUDA
-    r.notes = "TODO: CUDA H2D/D2H bandwidth measurement";
+    extern "C" double gpu_bench_h2d_bandwidth_gbps();
+    r.value = gpu_bench_h2d_bandwidth_gbps();
+    r.notes = r.value > 0 ? "64 MB H2D, 10 iterations" : "CUDA init failed";
 #else
-    r.notes = "CUDA not available";
-#endif
+    r.notes = "CUDA not compiled";
     r.value = 0;
+#endif
     return r;
 }
 
@@ -117,39 +119,18 @@ BenchResult bench_gpu_kernel() {
     r.name = "gpu_kernel";
     r.unit = "GFLOPS";
 #ifdef PICLUSTER_HAVE_CUDA
-    r.notes = "TODO: CUDA FMA kernel benchmark";
+    extern "C" double gpu_bench_fma_gflops();
+    r.value = gpu_bench_fma_gflops();
+    r.notes = r.value > 0 ? "1M threads, 2000 FMA/thread, 5 reps" : "CUDA init failed";
 #else
-    r.notes = "CUDA not available";
-#endif
+    r.notes = "CUDA not compiled";
     r.value = 0;
+#endif
     return r;
 }
 
-BenchResult bench_mpi_pingpong() {
-    BenchResult r;
-    r.name = "mpi_pingpong";
-    r.unit = "us";
-#ifdef PICLUSTER_HAVE_MPI
-    r.notes = "TODO: MPI ping-pong latency";
-#else
-    r.notes = "MPI not available";
-#endif
-    r.value = 0;
-    return r;
-}
-
-BenchResult bench_mpi_allreduce() {
-    BenchResult r;
-    r.name = "mpi_allreduce";
-    r.unit = "GB/s";
-#ifdef PICLUSTER_HAVE_MPI
-    r.notes = "TODO: MPI Allreduce bandwidth";
-#else
-    r.notes = "MPI not available";
-#endif
-    r.value = 0;
-    return r;
-}
+// MPI benchmarks: real implementations in mpi_bench.cpp
+// bench_mpi_pingpong() and bench_mpi_allreduce() are defined there
 
 BenchReport run_all() {
     BenchReport rep;
