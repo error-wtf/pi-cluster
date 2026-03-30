@@ -179,8 +179,11 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 | Benchmarks | ✅ Production | CPU, memory, disk I/O |
 | Checkpoint/resume | ✅ Functional | Save/load with metadata |
 | CLI | ✅ Production | detect, bench, doctor, estimate, run |
+| Chunk-based computation | ✅ Production | Real partial sums per chunk, adaptive sizing |
+| MPI merge (GMP) | ✅ Production | serialize_mpf → MPI_Gather → deserialize → accumulate |
+| Guardrails in run path | ✅ Production | Feasibility check, --dry-run, --confirm, disk abort |
 | CUDA hybrid | ⚠️ Experimental | ≤700 digits, double precision limit |
-| MPI skeleton | ⚠️ Skeleton | Architecture ready, merge not yet implemented |
+| MPI init + rank partition | ✅ Production | Real MPI_Init, rank-based chunk assignment |
 | GPU benchmarks | 🔲 Stub | Needs CUDA compilation |
 | MPI benchmarks | 🔲 Stub | Needs MPI compilation |
 | Binary splitting | 🔲 Planned | For billion+ digit efficiency |

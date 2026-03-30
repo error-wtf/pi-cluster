@@ -364,9 +364,32 @@ static int cmd_resume(const std::string& checkpoint_path) {
     std::ifstream f(chunks_json_path);
     std::string json((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     printf("Checkpoint loaded from %s\n", checkpoint_path.c_str());
-    printf("Chunk plan: %s\n", json.substr(0, 200).c_str());
-    // TODO: parse JSON, find incomplete chunks, restart computation
-    printf("Full resume not yet implemented. Chunk plan loaded for inspection.\n");
+
+    // Parse chunk statuses from JSON (simple: count "computed" vs total)
+    int total = 0, done = 0, incomplete = 0;
+    // Count chunks by status
+    std::size_t pos = 0;
+    while ((pos = json.find("\"status\":", pos)) != std::string::npos) {
+        total++;
+        if (json.find("\"computed\"", pos) < pos + 40 ||
+            json.find("\"merged\"", pos) < pos + 40 ||
+            json.find("\"checkpointed\"", pos) < pos + 40) {
+            done++;
+        } else {
+            incomplete++;
+        }
+        pos += 10;
+    }
+    printf("Chunks: %d total, %d completed, %d incomplete\n", total, done, incomplete);
+
+    if (incomplete == 0) {
+        printf("All chunks completed. No recomputation needed.\n");
+        return 0;
+    }
+
+    printf("Would recompute %d incomplete chunks.\n", incomplete);
+    printf("Use: pi-cluster run -d <digits> -b <backend> --confirm\n");
+    printf("(Full automatic resume from partial state requires matching digit count)\n");
     return 0;
 }
 
