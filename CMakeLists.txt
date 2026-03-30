@@ -85,7 +85,9 @@ add_library(picluster_core STATIC
     src/progress/progress.cpp
     src/storage/scratch.cpp
     src/storage/checkpoint.cpp
+    src/storage/chunk.cpp
     src/util/format.cpp
+    src/util/guardrails.cpp
 )
 target_link_libraries(picluster_core PUBLIC Threads::Threads)
 if(HAVE_GMP)
