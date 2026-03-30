@@ -12,6 +12,7 @@
 
 #include "picluster/detect/detect.h"
 #include "picluster/core/chudnovsky.h"
+#include "picluster/core/binary_splitting.h"
 #include "picluster/bench/bench.h"
 #include "picluster/progress/progress.h"
 #include "picluster/storage/chunk.h"
@@ -272,6 +273,12 @@ static int cmd_run(std::int64_t digits, const std::string& backend,
 
     if (actual_backend == "hybrid" || actual_backend == "mpi-hybrid") {
         final_result = picluster::core::compute_pi_gpu(digits, 256, progress_cb);
+        for (auto* ch : my_chunks)
+            chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
+    } else if (mpi_size == 1 && picluster::core::should_use_binary_splitting(digits)) {
+        // Single-node, large digits: use binary splitting (O(n log^2 n))
+        if (mpi_rank == 0) printf("Using binary splitting (faster for %lld digits)\n", (long long)digits);
+        final_result = picluster::core::compute_pi_binary_splitting(digits, progress_cb);
         for (auto* ch : my_chunks)
             chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
     } else {

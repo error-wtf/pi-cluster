@@ -186,7 +186,7 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 | MPI init + rank partition | ✅ Production | Real MPI_Init, rank-based chunk assignment |
 | GPU benchmarks | ✅ Implemented | H2D bandwidth + FMA kernel (requires BUILD_CUDA=ON) |
 | MPI benchmarks | ✅ Implemented | Ping-pong latency + Allreduce bandwidth (requires BUILD_MPI=ON) |
-| Binary splitting | ⚠️ Skeleton | Architectural hooks ready, GMP product tree planned |
+| Binary splitting | ✅ Production | Real GMP product tree P/Q/T, auto-selected for >50K digits |
 
 ---
 
