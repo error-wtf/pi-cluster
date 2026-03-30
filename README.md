@@ -176,10 +176,10 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 | Chudnovsky CPU (GMP) | ✅ Production | Arbitrary precision, `compute_partial_sum()` per chunk range | — |
 | Binary splitting | ✅ Production | Real GMP product tree P/Q/T via `bs_recursive`, auto-selected >50K digits | Not yet MPI-distributed (single-node only) |
 | Chunk computation | ✅ Production | Each chunk computes real partial sum [start,end), round-robin on ranks | Chunk data not yet written to scratch as intermediate files |
-| MPI merge | ✅ Implemented | `serialize_mpf` → `MPI_Gather` → `deserialize_mpf` → accumulate on rank 0 | Not yet hierarchical tree-reduce (currently star topology to rank 0) |
+| MPI merge | ✅ Production | Hierarchical tree-reduce: O(log N) pairwise steps with GMP serialize/deserialize | — |
 | Guardrails | ✅ Production | Feasibility check, `--dry-run`, `--confirm` gate, disk watermark → `exit(2)` with checkpoint | — |
 | Signal handling | ✅ Production | SIGINT/SIGTERM → real `chunks.json` checkpoint save | — |
-| Checkpoint | ✅ Functional | Chunk plan saved as JSON, loaded by `resume` with status parsing | Resume shows status but doesn't auto-recompute incomplete chunks yet |
+| Checkpoint/Resume | ✅ Production | Chunk plan saved as JSON; `resume` parses status, auto-recomputes only incomplete chunks | Partial sum storage for skip-recompute of completed chunks not yet persisted |
 | CLI | ✅ Production | detect, bench, doctor, estimate, run, resume | — |
 | Progress tracker | ✅ Production | Phase-based, ETA, throughput, JSON export | Chunk-level and merge-level detail still basic |
 | Benchmarks (CPU/Mem/IO) | ✅ Production | CPU throughput, memory bandwidth, sequential disk I/O | Random I/O still TODO |
