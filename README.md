@@ -170,23 +170,23 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 
 ## Implementation Status
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Hardware detection | ✅ Production | CPU, RAM, NUMA, GPU, Scratch, Slurm |
-| Chudnovsky CPU (GMP) | ✅ Production | Arbitrary precision, chunked |
-| BBP validation | ✅ Production | Double-precision cross-check |
-| Progress tracker | ✅ Production | Phase-based, terminal + JSON |
-| Benchmarks | ✅ Production | CPU, memory, disk I/O |
-| Checkpoint/resume | ✅ Functional | Save/load with metadata |
-| CLI | ✅ Production | detect, bench, doctor, estimate, run |
-| Chunk-based computation | ✅ Production | Real partial sums per chunk, adaptive sizing |
-| MPI merge (GMP) | ✅ Production | serialize_mpf → MPI_Gather → deserialize → accumulate |
-| Guardrails in run path | ✅ Production | Feasibility check, --dry-run, --confirm, disk abort |
-| CUDA hybrid | ✅ Production | Tier 1: GPU double (≤700 digits), Tier 2: binary splitting + GPU NTT hooks (unlimited) |
-| MPI init + rank partition | ✅ Production | Real MPI_Init, rank-based chunk assignment |
-| GPU benchmarks | ✅ Implemented | H2D bandwidth + FMA kernel (requires BUILD_CUDA=ON) |
-| MPI benchmarks | ✅ Implemented | Ping-pong latency + Allreduce bandwidth (requires BUILD_MPI=ON) |
-| Binary splitting | ✅ Production | Real GMP product tree P/Q/T, auto-selected for >50K digits |
+| Component | Status | What's real | What's not yet |
+|-----------|--------|-------------|----------------|
+| Hardware detection | ✅ Production | CPU, RAM, NUMA, GPU, Scratch, Slurm | — |
+| Chudnovsky CPU (GMP) | ✅ Production | Arbitrary precision, `compute_partial_sum()` per chunk range | — |
+| Binary splitting | ✅ Production | Real GMP product tree P/Q/T via `bs_recursive`, auto-selected >50K digits | Not yet MPI-distributed (single-node only) |
+| Chunk computation | ✅ Production | Each chunk computes real partial sum [start,end), round-robin on ranks | Chunk data not yet written to scratch as intermediate files |
+| MPI merge | ✅ Implemented | `serialize_mpf` → `MPI_Gather` → `deserialize_mpf` → accumulate on rank 0 | Not yet hierarchical tree-reduce (currently star topology to rank 0) |
+| Guardrails | ✅ Production | Feasibility check, `--dry-run`, `--confirm` gate, disk watermark → `exit(2)` with checkpoint | — |
+| Signal handling | ✅ Production | SIGINT/SIGTERM → real `chunks.json` checkpoint save | — |
+| Checkpoint | ✅ Functional | Chunk plan saved as JSON, loaded by `resume` with status parsing | Resume shows status but doesn't auto-recompute incomplete chunks yet |
+| CLI | ✅ Production | detect, bench, doctor, estimate, run, resume | — |
+| Progress tracker | ✅ Production | Phase-based, ETA, throughput, JSON export | Chunk-level and merge-level detail still basic |
+| Benchmarks (CPU/Mem/IO) | ✅ Production | CPU throughput, memory bandwidth, sequential disk I/O | Random I/O still TODO |
+| GPU benchmarks | ✅ Implemented | H2D bandwidth (64 MB), FMA kernel (1M threads) | Requires `BUILD_CUDA=ON` |
+| MPI benchmarks | ✅ Implemented | Ping-pong latency (10K iters), Allreduce bandwidth (8 MB) | Requires `BUILD_MPI=ON` |
+| CUDA hybrid | ✅ Implemented | Tier 1: GPU double ≤700 digits. Tier 2: falls through to binary splitting, NTT kernel architecture ready | Full GMP-limb ↔ GPU NTT pipeline not yet wired end-to-end |
+| BBP validation | ✅ Production | Double-precision cross-check | — |
 
 ---
 
