@@ -17,6 +17,8 @@
 #include "picluster/bench/bench.h"
 #include "picluster/progress/progress.h"
 #include "picluster/storage/chunk.h"
+#include "picluster/storage/chunk_persist.h"
+#include "picluster/bench/calibration.h"
 #include "picluster/util/guardrails.h"
 
 #ifdef PICLUSTER_HAVE_MPI
@@ -71,6 +73,10 @@ static int cmd_bench(bool json) {
     auto r = picluster::bench::run_all();
     if (json) std::cout << r.to_json() << std::endl;
     else std::cout << r.to_text();
+    // Save calibrated node profile
+    auto np = picluster::bench::calibrate("/tmp");
+    picluster::bench::save_profile(np, "node_profile.json");
+    std::cout << "Node profile saved to node_profile.json\n";
     return 0;
 }
 
@@ -116,6 +122,14 @@ static int cmd_estimate(std::int64_t digits) {
     picluster::guardrails::ResourceLimits limits;
     auto est = picluster::guardrails::check_feasibility(
         digits, profile.mem.free_ram_bytes, profile.scratch.free_bytes, 1, limits);
+    // Try calibrated estimate if profile exists
+    std::string profile_path = "node_profile.json";
+    auto np = picluster::bench::load_profile(profile_path);
+    double cal_time = -1;
+    if (np.cpu_mflops > 0) {
+        cal_time = picluster::bench::estimate_time_from_profile(np, digits, 1);
+    }
+
     std::cout << "=== pi-cluster Estimate ===\n";
     printf("  Digits:        %lld\n", (long long)digits);
     printf("  RAM needed:    %zu MB\n", est.ram_needed_bytes/(1024*1024));
@@ -124,7 +138,11 @@ static int cmd_estimate(std::int64_t digits) {
     printf("  Fits in RAM:   %s\n", est.fits_in_ram ? "YES" : "NO");
     printf("  Rec. nodes:    %d\n", est.recommended_nodes);
     printf("  Chunks:        %lld\n", (long long)est.chunk_count);
-    printf("  Est. time:     %.1f hours\n", est.estimated_walltime_hours);
+    if (cal_time > 0) {
+        printf("  Est. time:     %.1f hours (CALIBRATED from node_profile.json)\n", cal_time / 3600.0);
+    } else {
+        printf("  Est. time:     %.1f hours (heuristic, run 'bench' for calibrated estimate)\n", est.estimated_walltime_hours);
+    }
     if (!est.warning.empty()) printf("  WARNING: %s\n", est.warning.c_str());
     return 0;
 }
@@ -292,20 +310,15 @@ static int cmd_run(std::int64_t digits, const std::string& backend,
         for (auto* ch : my_chunks) {
             if (picluster::guardrails::shutdown_requested()) break;
 
-            // Check if this chunk's partial sum was already persisted (resume skip)
-            std::string sum_file = chunk_data_dir + "/chunk_" + std::to_string(ch->chunk_id) + ".sum";
-            if (std::filesystem::exists(sum_file)) {
-                std::ifstream sf(sum_file);
-                std::string saved_sum;
-                std::getline(sf, saved_sum);
-                if (!saved_sum.empty()) {
-                    mpf_class restored(saved_sum);
-                    local_S += restored;
-                    chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
-                    if (verbose && mpi_rank == 0)
-                        printf("  Chunk %lld: restored from %s\n", (long long)ch->chunk_id, sum_file.c_str());
-                    continue;
-                }
+            // Try loading persisted chunk sum (proper persistence API)
+            std::string saved = picluster::storage::load_chunk_sum(plan.checkpoint_path, ch->chunk_id);
+            if (!saved.empty() && picluster::storage::verify_chunk_sum(plan.checkpoint_path, ch->chunk_id)) {
+                mpf_class restored(saved);
+                local_S += restored;
+                chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
+                if (verbose && mpi_rank == 0)
+                    printf("  Chunk %lld: restored (verified)\n", (long long)ch->chunk_id);
+                continue;
             }
 
             chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTING);
@@ -316,13 +329,20 @@ static int cmd_run(std::int64_t digits, const std::string& backend,
                 ch->range_start, ch->range_end, digits, chunk_S, progress_cb);
             local_S += chunk_S;
 
-            // Persist partial sum to scratch for resume
+            // Persist via chunk_persist API (atomic write + checksum + metadata)
             {
                 std::size_t bufsize = static_cast<std::size_t>(digits) + 50;
                 std::vector<char> buf(bufsize);
                 gmp_snprintf(buf.data(), bufsize, "%.*Fe", (int)(digits/3 + 20), chunk_S.get_mpf_t());
-                std::ofstream sf(sum_file);
-                sf << buf.data();
+                picluster::storage::ChunkSumMeta meta;
+                meta.chunk_id = ch->chunk_id;
+                meta.range_start = ch->range_start;
+                meta.range_end = ch->range_end;
+                meta.digits = digits;
+                meta.precision_bits = (digits + 50) * 3.4;
+                meta.backend = actual_backend;
+                meta.rank = mpi_rank;
+                picluster::storage::save_chunk_sum(plan.checkpoint_path, meta, std::string(buf.data()));
             }
 
             double dt = std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
