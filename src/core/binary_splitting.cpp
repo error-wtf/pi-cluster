@@ -50,11 +50,26 @@ static BSNode bs_base_case(std::int64_t a) {
     return n;
 }
 
+#ifdef PICLUSTER_HAVE_CUDA
+extern void gpu_multiply_mpz(mpz_t result, const mpz_t a, const mpz_t b);
+static const size_t GPU_MUL_THRESH = 50000;
+static void big_mul(mpz_class& r, const mpz_class& a, const mpz_class& b) {
+    if (mpz_size(a.get_mpz_t())+mpz_size(b.get_mpz_t()) > GPU_MUL_THRESH)
+        gpu_multiply_mpz(r.get_mpz_t(), a.get_mpz_t(), b.get_mpz_t());
+    else r = a * b;
+}
+#else
+static void big_mul(mpz_class& r, const mpz_class& a, const mpz_class& b) { r = a * b; }
+#endif
+
 static BSNode bs_merge_nodes(const BSNode& L, const BSNode& R) {
     BSNode n;
-    n.P = L.P * R.P;
-    n.Q = L.Q * R.Q;
-    n.T = L.T * R.Q + L.P * R.T;
+    big_mul(n.P, L.P, R.P);
+    big_mul(n.Q, L.Q, R.Q);
+    mpz_class tq, pt;
+    big_mul(tq, L.T, R.Q);
+    big_mul(pt, L.P, R.T);
+    n.T = tq + pt;
     return n;
 }
 
