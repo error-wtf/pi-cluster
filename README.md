@@ -162,7 +162,7 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 - Microbenchmark suite
 - Phase-based progress tracking with ETA and JSON telemetry
 - Checkpoint/resume support
-- MPI multi-node skeleton with hierarchical merge architecture
+- MPI multi-node with hierarchical tree-reduce merge (GMP serialize/deserialize)
 - Slurm job templates for PHYSnet
 - Doctor/estimate commands for pre-flight checks
 
