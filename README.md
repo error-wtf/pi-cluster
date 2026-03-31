@@ -95,6 +95,9 @@ make -j$(nproc)
 -o, --output <file>   Output file (default: pi.txt)
 --chunk <N>           Checkpoint interval (default: 1000 terms)
 --scratch <path>      Override scratch directory
+--dry-run             Show execution plan without running
+--confirm             Required for runs >10M digits
+--max-ram <F>         Max RAM fraction (default: 0.70)
 --json                Machine-readable JSON output
 -v, --verbose         Show progress bar and detailed output
 ```
@@ -106,16 +109,15 @@ make -j$(nproc)
 ```
 pi-cluster/
 ├── src/
-│   ├── core/          # Chudnovsky algorithm (GMP arbitrary precision)
-│   ├── cpu/           # CPU-specific optimizations (planned: NTT)
-│   ├── cuda/          # Optional CUDA hybrid (≤700 digits GPU, else CPU fallback)
-│   ├── mpi/           # MPI multi-node: rank discovery, hierarchical merge
+│   ├── core/          # Chudnovsky + Binary Splitting (GMP, MPI-distributed)
+│   ├── cpu/           │   ├── cuda/          # CUDA hybrid: Tier 1 GPU double, Tier 2 gpu_multiply_mpz in BS merge
+│   ├── mpi/           # MPI: rank discovery, hierarchical tree-reduce, BSNode merge
 │   ├── detect/        # Hardware detection: CPU, RAM, NUMA, GPU, Scratch, Slurm
-│   ├── bench/         # Microbenchmarks: CPU, memory, disk, GPU, MPI
-│   ├── progress/      # Phase-based progress: ETA, throughput, JSON telemetry
-│   ├── storage/       # Scratch manager, checkpoint save/load, resume
+│   ├── bench/         # Benchmarks: CPU, memory, seq+random disk, GPU, MPI + calibration
+│   ├── progress/      # Progress: ETA, throughput, chunk/merge stats, JSON telemetry
+│   ├── storage/       # Chunk persistence (atomic+checksum), checkpoint/resume, scratch
 │   ├── cli/           # Main CLI with subcommands
-│   └── util/          # Formatting helpers
+│   └── util/          # Guardrails (safe paths, resource limits, signals), formatting
 ├── include/picluster/ # Public headers
 ├── tests/             # Unit, integration, smoke tests
 ├── scripts/slurm/     # Slurm job templates (1, 8, 64 nodes)
@@ -135,7 +137,7 @@ pi-cluster/
 
 | Backend | Description |
 |---------|-------------|
-| `auto` | Conservative: CPU on PHYSnet, hybrid only if GPU detected and ≤700 digits |
+| `auto` | Conservative auto-detect: prefers CPU/MPI, uses binary splitting >50K digits, GPU only if detected and small |
 | `cpu` | GMP arbitrary precision, single-node |
 | `hybrid` | GPU Chudnovsky (≤700 digits) + CPU for higher precision |
 | `mpi` | Multi-node CPU via MPI |
@@ -192,11 +194,11 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 
 ## PHYSnet Notes
 
+- **Login:** `ssh login1.physnet.uni-hamburg.de`
 - **Scheduler:** Slurm
 - **Modules:** Use `module avail` to find available compilers/libraries
 - **Scratch:** Use `$SLURM_TMPDIR` for node-local temporary storage
 - **GPU:** 42 GPGPUs available; request via `--gres=gpu:N`
-
 
 See [docs/physnet.md](docs/physnet.md) for detailed PHYSnet integration guide.
 
