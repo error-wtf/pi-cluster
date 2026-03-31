@@ -509,12 +509,33 @@ static int cmd_resume(const std::string& checkpoint_path, const std::string& bac
         resumed_S += chunk_S;
     }
 
-    // Also need the completed chunks' sums — but we don't have them stored.
-    // For a full production resume, we'd need to store partial sums in checkpoint.
-    // Current approach: recompute ALL chunks for correctness, report that incomplete were the bottleneck.
-    printf("\nNote: For full correctness, all chunk partial sums are needed.\n");
-    printf("Recomputed %zu previously-incomplete chunks successfully.\n", incomplete.size());
-    printf("To produce final pi, run: pi-cluster run -d %lld --confirm\n", (long long)digits_target);
+    // Load completed chunks' persisted sums
+    mpf_class completed_S(0);
+    int loaded_count = 0;
+    for (auto& c : all_chunks) {
+        if (c.status == "computed" || c.status == "merged" || c.status == "checkpointed") {
+            std::string sum = picluster::storage::load_chunk_sum(checkpoint_path, c.id);
+            if (!sum.empty()) {
+                completed_S += mpf_class(sum);
+                loaded_count++;
+            }
+        }
+    }
+    printf("Loaded %d completed chunk sums from checkpoint\n", loaded_count);
+
+    // Merge all: completed (loaded) + incomplete (just recomputed)
+    mpf_class total_S = completed_S + resumed_S;
+
+    // Finalize pi = C / S
+    std::string pi_result = picluster::core::finalize_pi(total_S, digits_target);
+    if (!pi_result.empty() && !output.empty()) {
+        std::ofstream ofs(output);
+        if (ofs) { ofs << pi_result << "\n"; ofs.close(); }
+        printf("Wrote %lld digits of pi to %s (resumed)\n", (long long)digits_target, output.c_str());
+    } else {
+        printf("Resume complete. %d loaded + %zu recomputed = %zu total chunks merged.\n",
+               loaded_count, incomplete.size(), all_chunks.size());
+    }
 
     tracker.set_phase(picluster::progress::Phase::DONE, "Resume complete");
     if (verbose) { fprintf(stderr, "\n"); tracker.render_terminal(); fprintf(stderr, "\n"); }
