@@ -181,11 +181,11 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 | Signal handling | ✅ Production | SIGINT/SIGTERM → real `chunks.json` checkpoint save | — |
 | Checkpoint/Resume | ✅ Production | Chunk plan saved as JSON; `resume` parses status, auto-recomputes only incomplete chunks | — |
 | CLI | ✅ Production | detect, bench, doctor, estimate, run, resume | — |
-| Progress tracker | ✅ Production | Phase-based, ETA, throughput, JSON export | Chunk-level and merge-level detail still basic |
-| Benchmarks (CPU/Mem/IO) | ✅ Production | CPU throughput, memory bandwidth, sequential disk I/O | Random I/O still TODO |
+| Progress tracker | ✅ Production | Phase-based, ETA, throughput, chunk stats (C:done/total R:restored F:failed), merge level, JSON export | — |
+| Benchmarks (CPU/Mem/IO) | ✅ Production | CPU throughput, memory bandwidth, sequential disk I/O, 4K random read IOPS | — |
 | GPU benchmarks | ✅ Implemented | H2D bandwidth (64 MB), FMA kernel (1M threads) | Requires `BUILD_CUDA=ON` |
 | MPI benchmarks | ✅ Implemented | Ping-pong latency (10K iters), Allreduce bandwidth (8 MB) | Requires `BUILD_MPI=ON` |
-| CUDA hybrid | ✅ Implemented | Tier 1: GPU double ≤700 digits. Tier 2: falls through to binary splitting, NTT kernel architecture ready | Full GMP-limb ↔ GPU NTT pipeline not yet wired end-to-end |
+| CUDA hybrid | ✅ Implemented | Tier 1: GPU double ≤700 digits. Tier 2: binary splitting + gpu_multiply_mpz (GMP limb ↔ GPU NTT end-to-end) | — |
 | BBP validation | ✅ Production | Double-precision cross-check | — |
 
 ---

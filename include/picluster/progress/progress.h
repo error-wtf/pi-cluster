@@ -36,6 +36,15 @@ struct ProgressState {
     int errors = 0;
     int warnings = 0;
     std::string message;
+    // Chunk-level detail
+    std::int64_t chunks_total = 0;
+    std::int64_t chunks_done = 0;
+    std::int64_t chunks_failed = 0;
+    std::int64_t chunks_restored = 0;
+    // Merge-level detail
+    int merge_level = 0;
+    int merge_total_levels = 0;
+    double merge_bytes_transferred = 0;
 };
 
 class ProgressTracker {
@@ -49,6 +58,8 @@ public:
     void set_checkpoint_age(int seconds);
     void increment_errors();
     void increment_warnings();
+    void set_chunk_stats(std::int64_t total, std::int64_t done, std::int64_t failed, std::int64_t restored);
+    void set_merge_stats(int level, int total_levels, double bytes);
 
     ProgressState snapshot() const;
 

@@ -67,6 +67,21 @@ void ProgressTracker::set_checkpoint_age(int seconds) {
 void ProgressTracker::increment_errors() { std::lock_guard<std::mutex> lk(mu_); state_.errors++; }
 void ProgressTracker::increment_warnings() { std::lock_guard<std::mutex> lk(mu_); state_.warnings++; }
 
+void ProgressTracker::set_chunk_stats(std::int64_t total, std::int64_t done, std::int64_t failed, std::int64_t restored) {
+    std::lock_guard<std::mutex> lk(mu_);
+    state_.chunks_total = total;
+    state_.chunks_done = done;
+    state_.chunks_failed = failed;
+    state_.chunks_restored = restored;
+}
+
+void ProgressTracker::set_merge_stats(int level, int total_levels, double bytes) {
+    std::lock_guard<std::mutex> lk(mu_);
+    state_.merge_level = level;
+    state_.merge_total_levels = total_levels;
+    state_.merge_bytes_transferred = bytes;
+}
+
 ProgressState ProgressTracker::snapshot() const {
     std::lock_guard<std::mutex> lk(mu_);
     return state_;
@@ -119,6 +134,16 @@ void ProgressTracker::render_terminal() const {
         format_time(wall).c_str()
     );
 
+    // Chunk stats
+    if (s.chunks_total > 0)
+        fprintf(stderr, "  C:%lld/%lld", (long long)s.chunks_done, (long long)s.chunks_total);
+    if (s.chunks_restored > 0)
+        fprintf(stderr, " R:%lld", (long long)s.chunks_restored);
+    if (s.chunks_failed > 0)
+        fprintf(stderr, " F:%lld", (long long)s.chunks_failed);
+    // Merge stats
+    if (s.merge_total_levels > 0)
+        fprintf(stderr, "  M:%d/%d", s.merge_level, s.merge_total_levels);
     // Extra info on MPI
     if (s.mpi_size > 1)
         fprintf(stderr, "  rank %d/%d", s.mpi_rank, s.mpi_size);

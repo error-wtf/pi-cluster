@@ -94,8 +94,33 @@ BenchResult bench_disk_random(const std::string& path) {
     BenchResult r;
     r.name = "disk_random_io";
     r.unit = "IOPS";
-    r.notes = "TODO: implement 4K random read IOPS benchmark";
-    r.value = 0;
+    // Create a test file, then do random 4K reads
+    std::string fpath = path + "/pi_cluster_bench_rnd.bin";
+    const size_t FILE_SIZE = 64 * 1024 * 1024; // 64 MB
+    const int NUM_READS = 5000;
+    const size_t BLOCK = 4096;
+    // Write test file
+    {
+        std::vector<char> data(FILE_SIZE, 'R');
+        std::ofstream f(fpath, std::ios::binary);
+        f.write(data.data(), FILE_SIZE);
+    }
+    // Random 4K reads
+    std::ifstream f(fpath, std::ios::binary);
+    std::vector<char> buf(BLOCK);
+    srand(42);
+    double t0 = now_sec();
+    for (int i = 0; i < NUM_READS; i++) {
+        size_t offset = (rand() % (FILE_SIZE / BLOCK)) * BLOCK;
+        f.seekg(offset);
+        f.read(buf.data(), BLOCK);
+    }
+    double dt = now_sec() - t0;
+    f.close();
+    std::filesystem::remove(fpath);
+    r.value = NUM_READS / dt;
+    r.duration_sec = dt;
+    r.notes = "4K random reads from 64 MB file, " + std::to_string(NUM_READS) + " reads";
     return r;
 }
 

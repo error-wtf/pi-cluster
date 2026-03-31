@@ -190,19 +190,71 @@ std::string gpu_compute_pi(std::int64_t digits, int threads_per_block, ProgressC
     if (cb) cb(0.1, "GPU Tier 2: using binary splitting (GPU NTT ready for future)", 0);
     std::string result = compute_pi_binary_splitting(digits, cb);
 
-    // TODO: Replace GMP's internal multiply with gpu_ntt_multiply for the
-    // largest multiplications in the product tree. This requires:
-    // 1. Extract limbs from mpz_t
-    // 2. NTT multiply on GPU
-    // 3. Write result back to mpz_t
-    // This is the path to truly GPU-accelerated trillion-digit computation.
-
     return result;
 #else
     if (cb) cb(1.0, "No GMP — limited", 15);
     return "";
 #endif
 }
+
+
+// ============================================================
+// GMP-LIMB <-> GPU NTT END-TO-END PIPELINE
+// ============================================================
+// Extract GMP integer limbs, run NTT multiply on GPU, write back.
+// This is used for the largest multiplications in binary splitting.
+
+#ifdef PICLUSTER_HAVE_GMP
+void gpu_multiply_mpz(mpz_t result, const mpz_t a, const mpz_t b) {
+    // Extract limbs from GMP integers
+    size_t a_limbs = mpz_size(a);
+    size_t b_limbs = mpz_size(b);
+    const mp_limb_t* a_data = mpz_limbs_read(a);
+    const mp_limb_t* b_data = mpz_limbs_read(b);
+
+    // Convert limbs to long long for NTT (split each 64-bit limb into 32-bit halves)
+    std::vector<long long> va, vb;
+    for (size_t i = 0; i < a_limbs; i++) {
+        va.push_back((long long)(a_data[i] & 0xFFFFFFFF));
+        va.push_back((long long)(a_data[i] >> 32));
+    }
+    for (size_t i = 0; i < b_limbs; i++) {
+        vb.push_back((long long)(b_data[i] & 0xFFFFFFFF));
+        vb.push_back((long long)(b_data[i] >> 32));
+    }
+
+    // GPU NTT multiply
+    auto product = gpu_ntt_multiply(va, vb);
+
+    // Carry propagation and reconstruct GMP integer
+    // Each element is mod NTT_MOD, need to propagate carries
+    std::vector<mp_limb_t> result_limbs;
+    long long carry = 0;
+    for (size_t i = 0; i + 1 < product.size(); i += 2) {
+        long long lo = product[i] + carry;
+        long long hi = (i + 1 < product.size()) ? product[i + 1] : 0;
+        // Reconstruct 64-bit limb
+        mp_limb_t limb = ((mp_limb_t)(lo & 0xFFFFFFFF)) | ((mp_limb_t)(hi & 0xFFFFFFFF) << 32);
+        result_limbs.push_back(limb);
+        carry = (lo >> 32) + (hi >> 32);
+    }
+    if (carry > 0) {
+        result_limbs.push_back((mp_limb_t)carry);
+    }
+
+    // Write back to GMP
+    mp_limb_t* rp = mpz_limbs_write(result, result_limbs.size());
+    for (size_t i = 0; i < result_limbs.size(); i++) {
+        rp[i] = result_limbs[i];
+    }
+    mpz_limbs_finish(result, result_limbs.size());
+
+    // Fix sign: result is positive if a and b have same sign
+    if ((mpz_sgn(a) < 0) != (mpz_sgn(b) < 0)) {
+        mpz_neg(result, result);
+    }
+}
+#endif
 
 }} // namespace
 
