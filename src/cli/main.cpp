@@ -294,10 +294,14 @@ static int cmd_run(std::int64_t digits, const std::string& backend,
         final_result = picluster::core::compute_pi_gpu(digits, 256, progress_cb);
         for (auto* ch : my_chunks)
             chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
-    } else if (mpi_size == 1 && picluster::core::should_use_binary_splitting(digits)) {
-        // Single-node, large digits: use binary splitting (O(n log^2 n))
-        if (mpi_rank == 0) printf("Using binary splitting (faster for %lld digits)\n", (long long)digits);
-        final_result = picluster::core::compute_pi_binary_splitting(digits, progress_cb);
+    } else if (picluster::core::should_use_binary_splitting(digits)) {
+        if (mpi_size > 1) {
+            if (mpi_rank == 0) printf("MPI-distributed binary splitting (%d ranks)\n", mpi_size);
+            final_result = picluster::core::compute_pi_binary_splitting_mpi(digits, mpi_rank, mpi_size, progress_cb);
+        } else {
+            if (mpi_rank == 0) printf("Binary splitting (single-node)\n");
+            final_result = picluster::core::compute_pi_binary_splitting(digits, progress_cb);
+        }
         for (auto* ch : my_chunks)
             chunks.set_status(ch->chunk_id, picluster::storage::ChunkStatus::COMPUTED);
     } else {

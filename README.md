@@ -174,7 +174,7 @@ This project is a complete rewrite of [CALCULATION_OF_NUMBER_PI](https://github.
 |-----------|--------|-------------|----------------|
 | Hardware detection | ✅ Production | CPU, RAM, NUMA, GPU, Scratch, Slurm | — |
 | Chudnovsky CPU (GMP) | ✅ Production | Arbitrary precision, `compute_partial_sum()` per chunk range | — |
-| Binary splitting | ✅ Production | Real GMP product tree P/Q/T via `bs_recursive`, auto-selected >50K digits | Not yet MPI-distributed (single-node only) |
+| Binary splitting | ✅ Production | Real GMP product tree P/Q/T via `bs_recursive`, auto-selected >50K digits | MPI-distributed: tree-reduce of P/Q/T across ranks |
 | Chunk computation | ✅ Production | Real partial sums per chunk, persisted to scratch with atomic writes + checksums + metadata | — |
 | MPI merge | ✅ Production | Hierarchical tree-reduce: O(log N) pairwise steps with GMP serialize/deserialize | — |
 | Guardrails | ✅ Production | Feasibility check, `--dry-run`, `--confirm` gate, disk watermark → `exit(2)` with checkpoint | — |
